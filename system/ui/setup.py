@@ -184,10 +184,11 @@ class Setup(Widget):
     self.forks.append({"name": "openpilot stock (not recommended)", "url": OPENPILOT_URL})
     self.forks.append({"name": "Custom Software", "url": "CUSTOM"})
 
-    # Create ButtonRadio for each fork
+    # Create ButtonRadio for each fork and set touch valid callback
     self.fork_buttons = []
     for fork in self.forks:
       button = ButtonRadio(fork["name"], self.checkmark, font_size=BODY_FONT_SIZE, text_padding=80)
+      button.set_touch_valid_callback(lambda: self._software_selection_scroll_panel.is_touch_valid())
       self.fork_buttons.append(button)
 
   def _getting_started_button_callback(self):
@@ -306,9 +307,6 @@ class Setup(Widget):
 
     self._software_selection_continue_button.set_enabled(False)
 
-    # Check if touch is valid (not scrolling)
-    touch_valid = self._software_selection_scroll_panel.is_touch_valid()
-
     # Enable scissor mode for scrolling
     rl.begin_scissor_mode(int(rect.x), int(rect.y + TITLE_FONT_SIZE + MARGIN * 2), int(rect.width), int(available_height))
 
@@ -316,17 +314,7 @@ class Setup(Widget):
     y_position = rect.y + TITLE_FONT_SIZE + MARGIN * 2 + offset.y
     for i, button in enumerate(self.fork_buttons):
       button_rect = rl.Rectangle(rect.x + MARGIN, y_position, rect.width - MARGIN * 2, radio_height)
-
-      # Only allow button interaction if not scrolling
-      if touch_valid:
-        button.render(button_rect)
-      else:
-        # Render button but disable interaction during scroll
-        button_was_selected = button.selected
-        button.render(button_rect)
-        # Restore selection state if it changed during scroll
-        if not touch_valid and button.selected != button_was_selected:
-          button.selected = button_was_selected
+      button.render(button_rect)
 
       if button.selected:
         self._software_selection_continue_button.set_enabled(True)
