@@ -7,6 +7,7 @@ import urllib.request
 from urllib.parse import urlparse
 from enum import IntEnum
 import shutil
+import json
 
 import pyray as rl
 
@@ -32,6 +33,7 @@ BUTTON_HEIGHT = 160
 BUTTON_SPACING = 50
 
 OPENPILOT_URL = "https://openpilot.comma.ai"
+FORKS_JSON_URL = "https://gist.githubusercontent.com/ChosenCypher/6f34c27ea47ce2b52d20813fa8d1784a/raw/934fface5cf77d0955d4ac0db4a67ffbf8a2c1b1/forks.json"
 USER_AGENT = f"AGNOSSetup-{HARDWARE.get_os_version()}"
 
 CONTINUE_PATH = "/data/continue.sh"
@@ -78,6 +80,9 @@ class Setup(Widget):
     self.selected_radio = None
     self.warning = gui_app.texture("icons/warning.png", 150, 150)
     self.checkmark = gui_app.texture("icons/circled_check.png", 100, 100)
+    self.forks = []
+    self.fork_buttons = []
+    self.selected_fork_index = None
 
     self._low_voltage_title_label = Label("WARNING: Low Voltage", TITLE_FONT_SIZE, FontWeight.MEDIUM, TextAlignment.LEFT, text_color=rl.Color(255, 89, 79, 255))
     self._low_voltage_body_label = Label("Power your device in a car with a harness or proceed at your own risk.", BODY_FONT_SIZE,
@@ -90,13 +95,14 @@ class Setup(Widget):
     self._getting_started_body_label = Label("Before we get on the road, let's finish installation and cover some details.",
                                              BODY_FONT_SIZE, text_alignment=TextAlignment.LEFT)
 
-    self._software_selection_openpilot_button = ButtonRadio("openpilot", self.checkmark, font_size=BODY_FONT_SIZE, text_padding=80)
-    self._software_selection_custom_software_button = ButtonRadio("Custom Software", self.checkmark, font_size=BODY_FONT_SIZE, text_padding=80)
     self._software_selection_continue_button = Button("Continue", self._software_selection_continue_button_callback,
                                                       button_style=ButtonStyle.PRIMARY)
     self._software_selection_continue_button.set_enabled(False)
     self._software_selection_back_button = Button("Back", self._software_selection_back_button_callback)
     self._software_selection_title_label = Label("Choose Software to Use", TITLE_FONT_SIZE, FontWeight.BOLD, TextAlignment.LEFT)
+    self._software_selection_scroll_panel = GuiScrollPanel()
+
+    self._load_forks()
 
     self._download_failed_reboot_button = Button("Reboot device", HARDWARE.reboot)
     self._download_failed_startover_button = Button("Start over", self._download_failed_startover_button_callback, button_style=ButtonStyle.PRIMARY)
@@ -164,6 +170,25 @@ class Setup(Widget):
     self.stop_network_check_thread.clear()
     self.start_network_check()
 
+  def _load_forks(self):
+    """Download and parse the forks JSON, then create radio buttons"""
+    try:
+      req = urllib.request.Request(FORKS_JSON_URL, headers={"User-Agent": USER_AGENT})
+      with urllib.request.urlopen(req, timeout=10) as response:
+        self.forks = json.loads(response.read().decode('utf-8'))
+    except Exception:
+      # If download fails, use empty list
+      self.forks = []
+
+    # Add openpilot stock as the last option
+    self.forks.append({"name": "openpilot stock (not recommended)", "url": OPENPILOT_URL})
+
+    # Create ButtonRadio for each fork
+    self.fork_buttons = []
+    for fork in self.forks:
+      button = ButtonRadio(fork["name"], self.checkmark, font_size=BODY_FONT_SIZE, text_padding=80)
+      self.fork_buttons.append(button)
+
   def _getting_started_button_callback(self):
     self.state = SetupState.SOFTWARE_SELECTION
 
@@ -171,10 +196,16 @@ class Setup(Widget):
     self.state = SetupState.GETTING_STARTED
 
   def _software_selection_continue_button_callback(self):
-    if self._software_selection_openpilot_button.selected:
-      self.use_openpilot()
-    else:
-      self.state = SetupState.CUSTOM_SOFTWARE_WARNING
+    if self.selected_fork_index is not None and self.selected_fork_index < len(self.forks):
+      selected_fork = self.forks[self.selected_fork_index]
+      # Check if it's openpilot stock (last item in list)
+      if selected_fork["url"] == OPENPILOT_URL:
+        self.use_openpilot()
+      else:
+        # For custom forks, go directly to network setup and then download
+        self.state = SetupState.NETWORK_SETUP
+        self.stop_network_check_thread.clear()
+        self.start_network_check()
 
   def _download_failed_startover_button_callback(self):
     self.state = SetupState.GETTING_STARTED
@@ -184,10 +215,9 @@ class Setup(Widget):
 
   def _network_setup_continue_button_callback(self):
     self.stop_network_check_thread.set()
-    if self._software_selection_openpilot_button.selected:
-      self.download(OPENPILOT_URL)
-    else:
-      self.state = SetupState.CUSTOM_SOFTWARE
+    if self.selected_fork_index is not None and self.selected_fork_index < len(self.forks):
+      selected_fork = self.forks[self.selected_fork_index]
+      self.download(selected_fork["url"])
 
   def render_low_voltage(self, rect: rl.Rectangle):
     rl.draw_texture(self.warning, int(rect.x + 150), int(rect.y + 110), rl.WHITE)
@@ -259,25 +289,41 @@ class Setup(Widget):
 
     radio_height = 230
     radio_spacing = 30
+    button_y = rect.height - BUTTON_HEIGHT - MARGIN
+
+    # Calculate content height for scrolling
+    content_height = len(self.fork_buttons) * (radio_height + radio_spacing)
+    available_height = button_y - TITLE_FONT_SIZE - MARGIN * 3
+    content_rect = rl.Rectangle(rect.x, rect.y + TITLE_FONT_SIZE + MARGIN * 2, rect.width, content_height)
+    offset = self._software_selection_scroll_panel.handle_scroll(
+      rl.Rectangle(rect.x, rect.y + TITLE_FONT_SIZE + MARGIN * 2, rect.width, available_height),
+      content_rect
+    )
 
     self._software_selection_continue_button.set_enabled(False)
 
-    openpilot_rect = rl.Rectangle(rect.x + MARGIN, rect.y + TITLE_FONT_SIZE + MARGIN * 2, rect.width - MARGIN * 2, radio_height)
-    self._software_selection_openpilot_button.render(openpilot_rect)
+    # Enable scissor mode for scrolling
+    rl.begin_scissor_mode(int(rect.x), int(rect.y + TITLE_FONT_SIZE + MARGIN * 2), int(rect.width), int(available_height))
 
-    if self._software_selection_openpilot_button.selected:
-      self._software_selection_continue_button.set_enabled(True)
-      self._software_selection_custom_software_button.selected = False
+    # Render all fork buttons dynamically
+    y_position = rect.y + TITLE_FONT_SIZE + MARGIN * 2 + offset.y
+    for i, button in enumerate(self.fork_buttons):
+      button_rect = rl.Rectangle(rect.x + MARGIN, y_position, rect.width - MARGIN * 2, radio_height)
+      button.render(button_rect)
 
-    custom_rect = rl.Rectangle(rect.x + MARGIN, rect.y + TITLE_FONT_SIZE + MARGIN * 2 + radio_height + radio_spacing, rect.width - MARGIN * 2, radio_height)
-    self._software_selection_custom_software_button.render(custom_rect)
+      if button.selected:
+        self._software_selection_continue_button.set_enabled(True)
+        self.selected_fork_index = i
+        # Deselect all other buttons
+        for j, other_button in enumerate(self.fork_buttons):
+          if j != i:
+            other_button.selected = False
 
-    if self._software_selection_custom_software_button.selected:
-      self._software_selection_continue_button.set_enabled(True)
-      self._software_selection_openpilot_button.selected = False
+      y_position += radio_height + radio_spacing
+
+    rl.end_scissor_mode()
 
     button_width = (rect.width - BUTTON_SPACING - MARGIN * 2) / 2
-    button_y = rect.height - BUTTON_HEIGHT - MARGIN
 
     self._software_selection_back_button.render(rl.Rectangle(rect.x + MARGIN, button_y, button_width, BUTTON_HEIGHT))
     self._software_selection_continue_button.render(rl.Rectangle(rect.x + MARGIN + button_width + BUTTON_SPACING, button_y, button_width, BUTTON_HEIGHT))
