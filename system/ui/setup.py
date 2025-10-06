@@ -180,8 +180,9 @@ class Setup(Widget):
       # If download fails, use empty list
       self.forks = []
 
-    # Add openpilot stock as the last option
+    # Add openpilot stock and custom software at the end
     self.forks.append({"name": "openpilot stock (not recommended)", "url": OPENPILOT_URL})
+    self.forks.append({"name": "Custom Software", "url": "CUSTOM"})
 
     # Create ButtonRadio for each fork
     self.fork_buttons = []
@@ -198,8 +199,11 @@ class Setup(Widget):
   def _software_selection_continue_button_callback(self):
     if self.selected_fork_index is not None and self.selected_fork_index < len(self.forks):
       selected_fork = self.forks[self.selected_fork_index]
-      # Check if it's openpilot stock (last item in list)
-      if selected_fork["url"] == OPENPILOT_URL:
+      # Check if it's custom software
+      if selected_fork["url"] == "CUSTOM":
+        self.state = SetupState.CUSTOM_SOFTWARE_WARNING
+      # Check if it's openpilot stock
+      elif selected_fork["url"] == OPENPILOT_URL:
         self.use_openpilot()
       else:
         # For custom forks, go directly to network setup and then download
