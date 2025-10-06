@@ -33,7 +33,7 @@ BUTTON_HEIGHT = 160
 BUTTON_SPACING = 50
 
 OPENPILOT_URL = "https://openpilot.comma.ai"
-FORKS_JSON_URL = "https://gist.githubusercontent.com/ChosenCypher/6f34c27ea47ce2b52d20813fa8d1784a/raw/934fface5cf77d0955d4ac0db4a67ffbf8a2c1b1/forks.json"
+FORKS_JSON_URL = "https://forks.konik.ai"
 USER_AGENT = f"AGNOSSetup-{HARDWARE.get_os_version()}"
 
 CONTINUE_PATH = "/data/continue.sh"
