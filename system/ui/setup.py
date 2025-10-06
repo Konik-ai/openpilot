@@ -102,6 +102,10 @@ class Setup(Widget):
     self._software_selection_title_label = Label("Choose Software to Use", TITLE_FONT_SIZE, FontWeight.BOLD, TextAlignment.LEFT)
     self._software_selection_scroll_panel = GuiScrollPanel()
 
+    # Set touch callback on bottom buttons to prevent scroll interference
+    self._software_selection_continue_button.set_touch_valid_callback(lambda: True)
+    self._software_selection_back_button.set_touch_valid_callback(lambda: True)
+
     self._load_forks()
 
     self._download_failed_reboot_button = Button("Reboot device", HARDWARE.reboot)
@@ -294,28 +298,54 @@ class Setup(Widget):
 
     radio_height = 230
     radio_spacing = 30
-    button_y = rect.height - BUTTON_HEIGHT - MARGIN
+    button_y = rect.y + rect.height - BUTTON_HEIGHT - MARGIN
+
+    # Calculate scroll area - must not overlap with bottom buttons
+    scroll_area_top = rect.y + TITLE_FONT_SIZE + MARGIN * 2
+    scroll_area_bottom = button_y - MARGIN  # Add gap between scroll area and buttons
+    available_height = scroll_area_bottom - scroll_area_top
 
     # Calculate content height for scrolling
     content_height = len(self.fork_buttons) * (radio_height + radio_spacing)
-    available_height = button_y - TITLE_FONT_SIZE - MARGIN * 3
-    content_rect = rl.Rectangle(rect.x, rect.y + TITLE_FONT_SIZE + MARGIN * 2, rect.width, content_height)
-    offset = self._software_selection_scroll_panel.handle_scroll(
-      rl.Rectangle(rect.x, rect.y + TITLE_FONT_SIZE + MARGIN * 2, rect.width, available_height),
-      content_rect
-    )
+
+    # Scroll panel bounds should only cover where buttons actually are, not empty space below
+    actual_scroll_height = min(content_height, available_height)
+    scroll_bounds = rl.Rectangle(rect.x, scroll_area_top, rect.width, actual_scroll_height)
+    content_rect = rl.Rectangle(rect.x, scroll_area_top, rect.width, content_height)
+    offset = self._software_selection_scroll_panel.handle_scroll(scroll_bounds, content_rect)
 
     self._software_selection_continue_button.set_enabled(False)
 
     # Enable scissor mode for scrolling
-    rl.begin_scissor_mode(int(rect.x), int(rect.y + TITLE_FONT_SIZE + MARGIN * 2), int(rect.width), int(available_height))
+    rl.begin_scissor_mode(int(scroll_bounds.x), int(scroll_bounds.y), int(scroll_bounds.width), int(actual_scroll_height))
 
     # Render all fork buttons dynamically
-    y_position = rect.y + TITLE_FONT_SIZE + MARGIN * 2 + offset.y
+    y_position = scroll_area_top + offset.y
     for i, button in enumerate(self.fork_buttons):
-      button_rect = rl.Rectangle(rect.x + MARGIN, y_position, rect.width - MARGIN * 2, radio_height)
-      button.render(button_rect)
+      button_top = y_position
+      button_bottom = y_position + radio_height
+      scroll_bottom = scroll_bounds.y + actual_scroll_height
 
+      # Allow rendering if button is at least partially visible for smooth scrolling
+      button_visible = (button_top < scroll_bottom and button_bottom > scroll_bounds.y)
+
+      # But disable touch for buttons that extend beyond scroll bounds
+      button_extends_beyond = button_bottom > scroll_bottom
+
+      if button_visible:
+        button_rect = rl.Rectangle(rect.x + MARGIN, y_position, rect.width - MARGIN * 2, radio_height)
+
+        # Disable touch on buttons that extend beyond scroll area
+        if button_extends_beyond:
+          button.set_touch_valid_callback(lambda: False)
+
+        button.render(button_rect)
+
+        # Re-enable touch after rendering
+        if button_extends_beyond:
+          button.set_touch_valid_callback(lambda: self._software_selection_scroll_panel.is_touch_valid())
+
+      # Check selection state for all buttons (even non-visible ones)
       if button.selected:
         self._software_selection_continue_button.set_enabled(True)
         self.selected_fork_index = i
