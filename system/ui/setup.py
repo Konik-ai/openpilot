@@ -53,7 +53,7 @@ exec ./launch_openpilot.sh
 class SetupState(IntEnum):
   LOW_VOLTAGE = 0
   GETTING_STARTED = 1
-  NETWORK_SETUP = 2
+  NETWORK_SETUP = 2  # WiFi setup moved before software selection
   SOFTWARE_SELECTION = 3
   CUSTOM_SOFTWARE = 4
   DOWNLOADING = 5
@@ -102,11 +102,7 @@ class Setup(Widget):
     self._software_selection_title_label = Label("Choose Software to Use", TITLE_FONT_SIZE, FontWeight.BOLD, TextAlignment.LEFT)
     self._software_selection_scroll_panel = GuiScrollPanel()
 
-    # Set touch callback on bottom buttons to prevent scroll interference
-    self._software_selection_continue_button.set_touch_valid_callback(lambda: True)
-    self._software_selection_back_button.set_touch_valid_callback(lambda: True)
-
-    self._load_forks()
+    # Don't load forks in __init__ - will be loaded after WiFi is configured
 
     self._download_failed_reboot_button = Button("Reboot device", HARDWARE.reboot)
     self._download_failed_startover_button = Button("Start over", self._download_failed_startover_button_callback, button_style=ButtonStyle.PRIMARY)
@@ -170,9 +166,8 @@ class Setup(Widget):
     self.state = SetupState.SOFTWARE_SELECTION
 
   def _custom_software_warning_continue_button_callback(self):
-    self.state = SetupState.NETWORK_SETUP
-    self.stop_network_check_thread.clear()
-    self.start_network_check()
+    # WiFi already configured, go directly to custom software input
+    self.state = SetupState.CUSTOM_SOFTWARE
 
   def _load_forks(self):
     """Download and parse the forks JSON, then create radio buttons"""
@@ -196,10 +191,16 @@ class Setup(Widget):
       self.fork_buttons.append(button)
 
   def _getting_started_button_callback(self):
-    self.state = SetupState.SOFTWARE_SELECTION
+    # Go to WiFi setup first, then software selection
+    self.state = SetupState.NETWORK_SETUP
+    self.stop_network_check_thread.clear()
+    self.start_network_check()
 
   def _software_selection_back_button_callback(self):
-    self.state = SetupState.GETTING_STARTED
+    # Go back to network setup
+    self.state = SetupState.NETWORK_SETUP
+    self.stop_network_check_thread.clear()
+    self.start_network_check()
 
   def _software_selection_continue_button_callback(self):
     if self.selected_fork_index is not None and self.selected_fork_index < len(self.forks):
@@ -211,22 +212,22 @@ class Setup(Widget):
       elif selected_fork["url"] == OPENPILOT_URL:
         self.use_openpilot()
       else:
-        # For custom forks, go directly to network setup and then download
-        self.state = SetupState.NETWORK_SETUP
-        self.stop_network_check_thread.clear()
-        self.start_network_check()
+        # For custom forks, download directly (WiFi already configured)
+        self.download(selected_fork["url"])
 
   def _download_failed_startover_button_callback(self):
     self.state = SetupState.GETTING_STARTED
 
   def _network_setup_back_button_callback(self):
-    self.state = SetupState.SOFTWARE_SELECTION
+    # Go back to getting started
+    self.state = SetupState.GETTING_STARTED
 
   def _network_setup_continue_button_callback(self):
     self.stop_network_check_thread.set()
-    if self.selected_fork_index is not None and self.selected_fork_index < len(self.forks):
-      selected_fork = self.forks[self.selected_fork_index]
-      self.download(selected_fork["url"])
+    # Load forks list now that we have internet
+    self._load_forks()
+    # Go to software selection
+    self.state = SetupState.SOFTWARE_SELECTION
 
   def render_low_voltage(self, rect: rl.Rectangle):
     rl.draw_texture(self.warning, int(rect.x + 150), int(rect.y + 110), rl.WHITE)
