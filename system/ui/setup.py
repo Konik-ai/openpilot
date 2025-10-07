@@ -208,11 +208,8 @@ class Setup(Widget):
       # Check if it's custom software
       if selected_fork["url"] == "CUSTOM":
         self.state = SetupState.CUSTOM_SOFTWARE_WARNING
-      # Check if it's openpilot stock
-      elif selected_fork["url"] == OPENPILOT_URL:
-        self.use_openpilot()
       else:
-        # For custom forks, download directly (WiFi already configured)
+        # For all forks (including openpilot stock), download directly (WiFi already configured)
         self.download(selected_fork["url"])
 
   def _download_failed_startover_button_callback(self):
