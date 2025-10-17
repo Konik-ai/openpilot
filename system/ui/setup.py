@@ -179,8 +179,7 @@ class Setup(Widget):
       # If download fails, use empty list
       self.forks = []
 
-    # Add openpilot stock and custom software at the end
-    self.forks.append({"name": "openpilot stock (not recommended)", "url": OPENPILOT_URL})
+    # Add custom software at the end
     self.forks.append({"name": "Custom Software", "url": "CUSTOM"})
 
     # Create ButtonRadio for each fork and set touch valid callback
