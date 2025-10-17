@@ -99,7 +99,7 @@ class Setup(Widget):
                                                       button_style=ButtonStyle.PRIMARY)
     self._software_selection_continue_button.set_enabled(False)
     self._software_selection_back_button = Button("Back", self._software_selection_back_button_callback)
-    self._software_selection_title_label = Label("Choose Software to Use", TITLE_FONT_SIZE, FontWeight.BOLD, TextAlignment.LEFT)
+    self._software_selection_title_label = Label("Konik Fork Selector", TITLE_FONT_SIZE, FontWeight.BOLD, TextAlignment.LEFT)
     self._software_selection_scroll_panel = GuiScrollPanel()
 
     # Don't load forks in __init__ - will be loaded after WiFi is configured
