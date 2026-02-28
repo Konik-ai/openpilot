@@ -476,6 +476,13 @@ class Setup(Widget):
         self.download_failed(self.download_url, "No custom software found at this URL.")
         return
 
+      # Clear stale install cache for non-stock forks so the installer does a fresh clone
+      if self.download_url != OPENPILOT_URL:
+        if os.path.isfile(VALID_CACHE_PATH):
+          os.remove(VALID_CACHE_PATH)
+        if os.path.isdir(INSTALL_PATH):
+          shutil.rmtree(INSTALL_PATH)
+
       # AGNOS might try to execute the installer before this process exits.
       # Therefore, important to close the fd before renaming the installer.
       os.close(fd)
